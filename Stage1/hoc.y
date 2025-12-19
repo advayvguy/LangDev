@@ -20,7 +20,7 @@ list:
     	| list expr '\n' {printf("\t%.8g\n",$2); }
 	;
 
-expr:	  NUMBER {$$ = $1; }
+expr:	 NUMBER {$$ = $1; }
 		| '-' expr %prec UNARYMINUS {$$ = -$2; }
 		| expr '+' expr {$$ = $1 + $3; }
 		| expr '%' expr {$$ = (int)$1 % (int)$3; }
@@ -28,6 +28,7 @@ expr:	  NUMBER {$$ = $1; }
 		| expr '*' expr {$$ = $1 * $3; }
 		| expr '/' expr {$$ = $1 / $3; }
 		| '(' expr ')' {$$ = $2; }
+		;
 %%
 
 /* end of grammar */
