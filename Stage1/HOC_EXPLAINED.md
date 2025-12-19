@@ -6,9 +6,10 @@
 3. [Architecture Overview](#architecture-overview)
 4. [Lexical Analysis: The Lexer](#lexical-analysis-the-lexer)
 5. [Syntax Analysis: The Parser](#syntax-analysis-the-parser)
-6. [Expression Evaluation](#expression-evaluation)
-7. [Complete Example Walkthrough](#complete-example-walkthrough)
-8. [How Values Flow Through the System](#how-values-flow-through-the-system)
+6. [How yyparse Matches Rules: The State Machine](#how-yyparse-matches-rules-the-state-machine)
+7. [Expression Evaluation](#expression-evaluation)
+8. [Complete Example Walkthrough](#complete-example-walkthrough)
+9. [How Values Flow Through the System](#how-values-flow-through-the-system)
 
 ---
 
@@ -300,6 +301,492 @@ graph TB
 The `%left` declarations tell Yacc:
 - `*` and `/` bind tighter than `+` and `-`
 - Operations at same level go left-to-right: `8 - 3 - 2` = `(8 - 3) - 2` = `3`
+
+---
+
+## How yyparse Matches Rules: The State Machine
+
+### The Mystery Inside yyparse
+
+When Yacc generates the `yyparse()` function, it doesn't just write if-statements to check grammar rules. Instead, it builds a sophisticated **state machine** with **parse tables** that guide parsing decisions.
+
+Think of it like a GPS navigation system:
+- **States** = intersections/locations on a map
+- **Tokens** = road signs telling you which way to go
+- **Parse tables** = the routing instructions
+- **Stack** = your travel history (where you've been)
+
+### What is LALR(1) Parsing?
+
+Yacc generates an **LALR(1) parser**. Let's break this down:
+
+- **L** = Left-to-right scanning (reads input from left to right)
+- **A** = Rightmost derivation (builds the parse tree from bottom-up)
+- **LR** = Left-to-right, Rightmost derivation
+- **1** = Looks ahead one token to make decisions
+
+```mermaid
+graph LR
+    A[Input: 2 + 3] --> B[Read left to right]
+    B --> C[Look ahead 1 token]
+    C --> D[Build tree bottom-up]
+    D --> E[Rightmost derivation]
+
+    style A fill:#e1f5ff
+    style C fill:#fff4e1
+    style E fill:#e1ffe1
+```
+
+### The Core Algorithm: LR Parsing
+
+The parser operates with three key data structures:
+
+```mermaid
+graph TB
+    subgraph "Parser Components"
+        A[Parse Stack<br/>Stores states and symbols]
+        B[Input Buffer<br/>Upcoming tokens]
+        C[Parse Tables<br/>Action & Goto]
+    end
+
+    D[Current State<br/>Top of Stack] --> C
+    E[Next Token<br/>Lookahead] --> C
+    C --> F{Decision}
+    F -->|Shift| G[Push state onto stack]
+    F -->|Reduce| H[Pop stack, apply rule]
+    F -->|Accept| I[Success!]
+    F -->|Error| J[Syntax Error]
+
+    style C fill:#fff4e1
+    style F fill:#ffe1f5
+    style I fill:#e1ffe1
+    style J fill:#ffcccc
+```
+
+### The Two Parse Tables
+
+Yacc generates two tables that control parsing:
+
+#### 1. Action Table
+
+The **Action Table** tells the parser what to do based on:
+- Current state (top of stack)
+- Next input token (lookahead)
+
+Possible actions:
+- **Shift (sN)**: Push token and go to state N
+- **Reduce (rN)**: Apply grammar rule N
+- **Accept**: Input is valid, done!
+- **Error**: Invalid syntax
+
+#### 2. Goto Table
+
+The **Goto Table** tells the parser which state to enter after a reduction:
+- Used after applying a grammar rule
+- Based on the non-terminal produced and current state
+
+### Simplified Parse Tables for HOC
+
+Let me show you a simplified version of the tables Yacc generates for our calculator:
+
+**Action Table** (simplified):
+
+| State | NUMBER | + | * | ( | ) | \n | $ |
+|-------|--------|---|---|---|---|----|---|
+| 0 | s2 | - | - | s3 | - | - | - |
+| 1 | - | s4 | s5 | - | - | acc | - |
+| 2 | - | r1 | r1 | - | r1 | r1 | - |
+| 3 | s2 | - | - | s3 | - | - | - |
+| 4 | s2 | - | - | s3 | - | - | - |
+| 5 | s2 | - | - | s3 | - | - | - |
+
+**Legend**:
+- `s2` = Shift and go to state 2
+- `r1` = Reduce using rule 1 (expr: NUMBER)
+- `acc` = Accept (parsing complete)
+- `-` = Error
+
+**Goto Table** (simplified):
+
+| State | expr | list |
+|-------|------|------|
+| 0 | 1 | - |
+| 3 | 6 | - |
+| 4 | 7 | - |
+
+### State Machine Diagram
+
+Here's a simplified state machine for parsing expressions:
+
+```mermaid
+stateDiagram-v2
+    [*] --> S0: Start
+
+    S0 --> S2: NUMBER
+    S0 --> S3: (
+
+    S2 --> S1: reduce to expr
+    S1 --> S4: +
+    S1 --> S5: *
+    S1 --> [*]: accept
+
+    S4 --> S2: NUMBER
+    S4 --> S3: (
+    S2 --> S7: reduce to expr
+
+    S5 --> S2: NUMBER
+    S5 --> S3: (
+    S2 --> S8: reduce to expr
+
+    S7 --> S1: reduce expr+expr to expr
+    S8 --> S1: reduce expr*expr to expr
+
+    S3 --> S2: NUMBER
+    S3 --> S3: (
+    S2 --> S6: reduce to expr
+    S6 --> S4: +
+    S6 --> S5: *
+    S6 --> S1: ) reduce (expr) to expr
+
+    note right of S0
+        Initial state
+        Waiting for expression
+    end note
+
+    note right of S2
+        Just saw a NUMBER
+        Can reduce to expr
+    end note
+
+    note right of S1
+        Have complete expr
+        Can see operator or end
+    end note
+```
+
+### How State Transitions Work
+
+Each state represents a partial understanding of what the parser has seen:
+
+```mermaid
+graph TD
+    A["State 0:<br/>Initial - expecting something"] --> B["State 2:<br/>Saw NUMBER"]
+    B --> C["Reduce: NUMBER → expr"]
+    C --> D["State 1:<br/>Have expr"]
+    D --> E["State 4:<br/>Have expr, saw +"]
+    E --> F["State 2:<br/>Saw another NUMBER"]
+    F --> G["Reduce: NUMBER → expr"]
+    G --> H["State 7:<br/>Have expr + expr"]
+    H --> I["Reduce: expr+expr → expr"]
+    I --> D
+
+    style A fill:#e1f5ff
+    style D fill:#fff4e1
+    style I fill:#e1ffe1
+```
+
+### Complete Example: Parsing "2 + 3"
+
+Let's trace how the state machine parses `2 + 3`:
+
+```mermaid
+sequenceDiagram
+    participant Input
+    participant Stack
+    participant Tables as Parse Tables
+    participant Action
+
+    Note over Stack: Stack: [State 0]
+    Input->>Tables: Token: NUMBER(2)
+    Tables->>Action: Action[0, NUMBER] = s2
+    Action->>Stack: Shift: Push NUMBER, State 2
+    Note over Stack: Stack: [0, NUMBER, 2]
+
+    Input->>Tables: Lookahead: +
+    Tables->>Action: Action[2, +] = r1 (reduce)
+    Action->>Stack: Reduce: NUMBER → expr
+    Note over Stack: Stack: [0, expr]
+    Tables->>Action: Goto[0, expr] = 1
+    Action->>Stack: Push State 1
+    Note over Stack: Stack: [0, expr, 1]
+
+    Input->>Tables: Token: +
+    Tables->>Action: Action[1, +] = s4
+    Action->>Stack: Shift: Push +, State 4
+    Note over Stack: Stack: [0, expr, 1, +, 4]
+
+    Input->>Tables: Token: NUMBER(3)
+    Tables->>Action: Action[4, NUMBER] = s2
+    Action->>Stack: Shift: Push NUMBER, State 2
+    Note over Stack: Stack: [0, expr, 1, +, 4, NUMBER, 2]
+
+    Input->>Tables: Lookahead: \n
+    Tables->>Action: Action[2, \n] = r1 (reduce)
+    Action->>Stack: Reduce: NUMBER → expr
+    Note over Stack: Stack: [0, expr, 1, +, 4, expr]
+    Tables->>Action: Goto[4, expr] = 7
+    Action->>Stack: Push State 7
+    Note over Stack: Stack: [0, expr, 1, +, 4, expr, 7]
+
+    Input->>Tables: Lookahead: \n
+    Tables->>Action: Action[7, \n] = r3 (reduce)
+    Action->>Stack: Reduce: expr+expr → expr
+    Note over Action: Execute: $$ = $1 + $3
+    Note over Stack: Stack: [0, expr, 1]
+
+    Input->>Tables: Token: \n
+    Tables->>Action: Action[1, \n] = accept
+    Action->>Action: Print result and accept!
+```
+
+### The Parse Stack in Detail
+
+The parse stack holds **two types** of information alternately:
+
+```mermaid
+graph LR
+    subgraph "Parse Stack for '2 + 3'"
+        A[State 0<br/>Bottom] --> B[NUMBER<br/>value: 2]
+        B --> C[State 2]
+        C --> D[expr<br/>value: 2]
+        D --> E[State 1]
+        E --> F[+<br/>operator]
+        F --> G[State 4]
+        G --> H[NUMBER<br/>value: 3]
+        H --> I[State 2<br/>Top]
+    end
+
+    style A fill:#e1f5ff
+    style C fill:#fff4e1
+    style E fill:#ffe1f5
+    style I fill:#ffd93d
+```
+
+### Shift vs Reduce Decision
+
+The parser constantly asks: **Should I shift (read more) or reduce (apply a rule)?**
+
+```mermaid
+graph TB
+    A{Parser Decision} --> B[Look at current state]
+    A --> C[Look at next token]
+    B --> D[Consult Action Table]
+    C --> D
+    D --> E{What does table say?}
+
+    E -->|Shift sN| F[More input needed<br/>Push token and go to state N]
+    E -->|Reduce rN| G[Enough info to match rule N<br/>Pop stack and apply rule]
+
+    F --> H[Example: Saw '2', shift to read more<br/>Don't know if it's '2+3' or just '2' yet]
+    G --> I[Example: Saw '2' and next is '+'<br/>NUMBER is complete, reduce to expr]
+
+    style E fill:#fff4e1
+    style F fill:#e1f5ff
+    style G fill:#ffe1f5
+```
+
+### Why Precedence Matters for State Machine
+
+Precedence declarations affect which states and transitions are generated:
+
+```mermaid
+graph TB
+    subgraph "For expr + expr * expr"
+        A[State: Have expr<br/>Saw +<br/>Got expr] --> B{Next token?}
+        B -->|*| C[SHIFT *<br/>Higher precedence]
+        B -->|\n| D[REDUCE expr+expr<br/>Equal/lower precedence]
+    end
+
+    subgraph "For expr * expr + expr"
+        E[State: Have expr<br/>Saw *<br/>Got expr] --> F{Next token?}
+        F -->|+| G[REDUCE expr*expr<br/>* done, + is lower]
+        F -->|*| H[SHIFT *<br/>Same precedence, left assoc]
+    end
+
+    style C fill:#e1ffe1
+    style D fill:#ffe1f5
+    style G fill:#ffe1f5
+    style H fill:#e1ffe1
+```
+
+### Real Code: What Yacc Generates
+
+In `hoc.tab.c`, you'll find arrays like:
+
+```c
+// State transition tables (simplified)
+static const yytype_uint8 yytable[] = {
+    2, 7, 0, 3, 14, 15, 16, 17, 4, 5,
+    8, 9, 10, 11, 3, 0, 13, 0, 10, 11,
+    5, 8, 9, 10, 11, 12
+};
+
+// State action decisions
+static const yytype_int8 yycheck[] = {
+    0, 5, -1, 3, 8, 9, 10, 11, 8, 9,
+    4, 5, 6, 7, 3, -1, 10, -1, 6, 7,
+    9, 4, 5, 6, 7, 8
+};
+```
+
+These tables encode the state machine. The parser uses them to make decisions without evaluating complex if-statements for every rule.
+
+### The Parsing Loop
+
+Here's the simplified algorithm inside `yyparse()`:
+
+```c
+int yyparse(void)
+{
+    int state = 0;  // Start in state 0
+
+    while (1) {
+        // Get current state from top of stack
+        state = stack[stack_top];
+
+        // Get next token if needed
+        if (lookahead == EMPTY)
+            lookahead = yylex();
+
+        // Consult action table
+        action = ACTION_TABLE[state][lookahead];
+
+        if (action == SHIFT) {
+            // Shift: push token and new state
+            push_stack(lookahead, yylval);
+            push_stack(next_state);
+            lookahead = EMPTY;  // Token consumed
+
+        } else if (action == REDUCE) {
+            // Reduce: apply grammar rule
+            rule = WHICH_RULE[action];
+
+            // Pop right-hand side from stack
+            for (i = 0; i < rule_length[rule]; i++)
+                pop_stack();
+
+            // Execute semantic action ($$ = $1 + $3, etc.)
+            execute_action(rule);
+
+            // Push non-terminal and new state
+            state = stack[stack_top];
+            push_stack(rule_lhs[rule], result_value);
+            push_stack(GOTO_TABLE[state][rule_lhs[rule]]);
+
+        } else if (action == ACCEPT) {
+            return 0;  // Success!
+
+        } else {
+            yyerror("syntax error");
+            return 1;  // Failure
+        }
+    }
+}
+```
+
+### Visualization: State Machine for "2+3*4"
+
+Let's see the state transitions for a complex expression:
+
+```mermaid
+stateDiagram-v2
+    [*] --> S0
+
+    note right of S0: Stack: [0]<br/>Input: 2+3*4
+
+    S0 --> S2: NUMBER(2)
+    note right of S2: Stack: [0,NUM,2]<br/>Reduce: NUM→expr
+
+    S2 --> S1: goto[0,expr]=1
+    note right of S1: Stack: [0,expr,1]<br/>Input: +3*4
+
+    S1 --> S4: +(shift)
+    note right of S4: Stack: [0,expr,1,+,4]<br/>Input: 3*4
+
+    S4 --> S2_2: NUMBER(3)
+    note right of S2_2: Stack: [0,expr,1,+,4,NUM,2]<br/>Reduce: NUM→expr
+
+    S2_2 --> S7: goto[4,expr]=7
+    note right of S7: Stack: [0,expr,1,+,4,expr,7]<br/>Input: *4<br/>SHIFT (higher prec)
+
+    S7 --> S5: *(shift)
+    note right of S5: Stack: [...,expr,7,*,5]<br/>Input: 4
+
+    S5 --> S2_3: NUMBER(4)
+    note right of S2_3: Reduce: NUM→expr
+
+    S2_3 --> S8: goto[5,expr]=8
+    note right of S8: Reduce: expr*expr→expr<br/>Action: 3*4=12
+
+    S8 --> S7_2: goto[4,expr]=7
+    note right of S7_2: Stack: [0,expr,1,+,4,expr,7]<br/>Now reduce: expr+expr
+
+    S7_2 --> S1_2: goto[0,expr]=1
+    note right of S1_2: Stack: [0,expr,1]<br/>Result: 14
+
+    S1_2 --> [*]: Accept
+```
+
+### Key Insights: Why State Machines?
+
+**Efficiency**:
+- Table lookup is O(1) - extremely fast
+- No need to check every grammar rule every time
+- Thousands of rules? Still instant decisions
+
+**Correctness**:
+- Yacc mathematically proves the grammar is parseable
+- Detects conflicts (ambiguities) at compile-time
+- Generated parser is guaranteed correct
+
+**Precedence Handling**:
+- Encoded directly in the state transitions
+- No runtime if-statements needed
+- Shift/reduce conflicts resolved by precedence
+
+### What Happens with Conflicts?
+
+Sometimes grammar is ambiguous. Yacc reports:
+
+```
+hoc.y:23: shift/reduce conflict
+```
+
+This means: "In some state, I don't know whether to shift or reduce"
+
+Example ambiguity:
+```yacc
+expr : expr '+' expr    // Could reduce this
+     | expr '*' expr    // Or shift to see if * comes next
+```
+
+The `%left` declarations tell Yacc how to resolve these conflicts!
+
+### State Machine Summary
+
+```mermaid
+graph TB
+    A[Grammar Rules<br/>Written by You] --> B[Yacc Analyzer]
+    B --> C[LR Item Sets<br/>Generated]
+    C --> D[State Machine<br/>DFA]
+    D --> E[Action Table]
+    D --> F[Goto Table]
+    E --> G[yyparse function]
+    F --> G
+    G --> H[Efficient Parser]
+
+    style A fill:#e1f5ff
+    style B fill:#fff4e1
+    style D fill:#ffe1f5
+    style H fill:#e1ffe1
+```
+
+**The Bottom Line**:
+- Yacc converts your grammar into a **Deterministic Finite Automaton (DFA)**
+- The DFA has **states** representing partial parses
+- **Parse tables** encode state transitions
+- `yyparse()` is a simple loop: consult tables, shift or reduce
+- This architecture makes parsing fast, correct, and handles precedence automatically!
 
 ---
 
