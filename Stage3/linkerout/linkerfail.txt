@@ -1,0 +1,5 @@
+duplicate symbol '_x' in:
+    /private/var/folders/jv/36_gzfln269czg38q0bsxhdw0000gn/T/link1-19498c.o
+    /private/var/folders/jv/36_gzfln269czg38q0bsxhdw0000gn/T/link2-7d69a5.o
+ld: 1 duplicate symbols
+clang: error: linker command failed with exit code 1 (use -v to see invocation)
