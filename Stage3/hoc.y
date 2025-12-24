@@ -7,10 +7,13 @@
 #include <stdlib.h>
 #include <signal.h>
 #include <setjmp.h>
+#include <math.h>
 #include "hoc.h" // for lookup and install
 
 extern double Pow(double a, double b); //belongs to math.c, Pow is invoked when '^' is encountered
 extern void init(); //belongs to init.c, this initilaizes the constants and the builtins
+extern double dispatch(double p1, double p2, char *funcname);
+extern double echeck(double val);
 
 int yylex(void); //for lexing, sending values through yylval and returning its token type
 double _ = 0; //remembers its previous value
@@ -63,15 +66,15 @@ expr: 	 NUMBER
     		|VAR													{if($1->type == UNDEF) execerror("undefined variable",$1->name); $$ = $1->u.val; } 
 				|CNST													{$$ = $1->u.val; }
 				|asgn
-				|BLTIN '(' expr ')' 					{$$ = (*($1->u.ptr))($3); }
-				|BLTIN2 '(' expr ',' expr ')'	{$$ = (*($1->u.ptr))($3,$5); }
-				|BLTIN0 '(' ')'								{$$ = (*($1->u.ptr))(); }
+				|BLTIN '(' expr ')' 					{$$ = dispatch($3,0,$1->name); }
+				|BLTIN2 '(' expr ',' expr ')'	{$$ = dispatch($3,$5,$1->name); }
+				|BLTIN0 '(' ')'								{$$ = dispatch(0,0,$1->name); }
 				|expr '+' expr 	    					{$$ = $1 + $3; }
 				|expr '-' expr  	    				{$$ = $1 - $3; }
 				|expr '*' expr	      				{$$ = $1 * $3; }
 				|expr '/' expr								{if($3 == 0) execerror("cant divide by zero",""); $$ = $1 / $3; }
 				|expr '%' expr								{if($3 == 0) execerror("cant divide by zero",""); $$ = (int)$1 % (int)$3; }
-				|expr '^' expr     						{$$ = Pow($1,$3); }
+				|expr '^' expr     						{$$ = pow($1,$3); }
 				|'(' expr ')'    							{$$ = $2; }
 				| '-' expr  %prec UNARYMINUS	{$$ = -$2; }
 %%

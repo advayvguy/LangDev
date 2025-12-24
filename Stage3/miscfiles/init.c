@@ -4,7 +4,7 @@
 #include <stdlib.h>
 
 extern double Rand();
-extern double execerror(const char *s, const char *t);
+
 static struct 
 {
 	char *name;
@@ -32,7 +32,7 @@ static struct
 	"log",   log10,
 	"exp",   exp,
 	"sqrt",  sqrt,
-	"int",   floor,
+	"int",   integer,
 	"abs",   fabs,
 	0,0
 };
@@ -56,33 +56,6 @@ static struct
 	"rand", Rand,
 	0,0
 };
-
-void echeck(double val)
-{
-	if (isnan(val)) execerror("arugments out of domain","");
-	if (isinf(val)) execerror("function out of range","");
-}
-	
-
-double dispatch(double p1, double p2, char *funcname)
-{
-	symbol *s = lookup(funcname);
-	double val;
-	if (s->type == BLTIN0)
-	{
-		val = (s->u.ptr)();
-	}
-	else if (s->type == BLTIN)
-	{
-		val = (s->u.ptr)(p1);
-	}
-	else if (s->type == BLTIN2)
-	{
-		val = (s->u.ptr)(p1,p2);
-	}
-	echeck(val);
-	return val;
-}
 
 void init()
 {
@@ -108,3 +81,13 @@ void init()
 		s->u.ptr = builtin0s[i].func;
 	}
 }
+
+
+
+
+
+
+
+
+
+
