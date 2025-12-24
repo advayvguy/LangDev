@@ -1,5 +1,3 @@
-//make -n ->shows the compilation stages without compiling
-
 OBJS = symbol.o init.o math.o hoc3.o
 
 hoc3: $(OBJS)
