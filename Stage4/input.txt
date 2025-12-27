@@ -1,0 +1,7 @@
+x = 5
+y = 10
+x + y
+z = ln(E*log(10))
+x + y + z
+!date
+x
