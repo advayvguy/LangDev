@@ -1,14 +1,18 @@
 x = 1
 y = 1
 i = 0
-while (i < 20){
+while (i < 20)
+{
 	fib = x + y
 	y = x
 	x = fib
 	if (fib % 2 == 1) {
 		print(fib)
-	} else {
-		print (0)
+	}
+
+	else
+	{
+		print(0)
 	}
 	i = i + 1
 }

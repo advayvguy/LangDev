@@ -38,7 +38,7 @@ void yyerror(char *s); //called upon by yylex for misc errors
 }
 
 %token <sym> NUMBER VAR BLTIN UNDEF CNST BLTIN2 BLTIN0 SYS WHILE IF ELSE PRINT 
-%type  <inst> stmt asgn expr stmtlist cond while if end
+%type  <inst> stmt asgn expr stmtlist cond while if end newl
 %right '='
 %left OR
 %left AND
@@ -50,7 +50,7 @@ void yyerror(char *s); //called upon by yylex for misc errors
 
 %%
 list:	
-    	|list '\n'									
+    	|list '\n'								
 			|list asgn '\n'									{code3(prevset, (Inst)pop, STOP); return 1; }
 			|list error '\n' 								{yyerrok; } //a flag to reassure that the error has been taken care of
 			|list expr '\n' 								{code3(prevset, print, STOP); return 1; }
@@ -65,12 +65,13 @@ list:
 asgn:	 VAR '=' expr 									{$$ = $3; code3(varpush, (Inst)$1, assign); }
 			|CNST '=' expr									{execerror("constant cant be changed",$1->name); }
 
-stmt: 	 expr 												{code((Inst)pop); }
-				|PRINT expr 									{code(prexpr); $$ = $2; }
-				|while cond stmt end 					{($1)[1] = (Inst)$3; ($1)[2] = (Inst)$4; }
-				|if cond stmt end							{($1)[1] = (Inst)$3; ($1)[3] = (Inst)$4; }
-				|if cond stmt end ELSE stmt end	{($1)[1] = (Inst)$3; ($1)[2] = (Inst)$6; ($1)[3] = (Inst)$7; }
-				|'{' stmtlist '}'							{$$ = $2; }
+stmt: 	 expr 																		{code((Inst)pop); }
+				|PRINT expr 															{code(prexpr); $$ = $2; }
+				|while cond newl stmt end 								{($1)[1] = (Inst)$4; ($1)[2] = (Inst)$5; }
+				|if cond newl stmt end										{($1)[1] = (Inst)$4; ($1)[3] = (Inst)$5; }
+				|if cond newl stmt end newl  ELSE newl stmt end	{($1)[1] = (Inst)$4; ($1)[2] = (Inst)$9; ($1)[3] = (Inst)$10; }
+				|'{' stmtlist '}'													{$$ = $2; }
+
 
 cond:		'(' expr ')' 									{code(STOP); $$ = $2; }
 
@@ -81,8 +82,8 @@ if:			IF 														{$$ = code(ifcode); code3(STOP,STOP,STOP); }
 end:																	{code(STOP); $$ = progp; }
 
 stmtlist:															{$$ = progp; }
-				|stmtlist '\n'
-				|stmtlist stmt '\n'
+				|stmtlist newl
+				|stmtlist stmt newl
 
 expr: 	 NUMBER												{$$ = code2(constpush, (Inst)$1); }
     		|VAR													{$$ = code3(varpush, (Inst)$1, eval); } 
@@ -108,6 +109,10 @@ expr: 	 NUMBER												{$$ = code2(constpush, (Inst)$1); }
 				|expr AND expr								{code(and_); }
 				|expr OR expr 								{code(or_); }
 				|NOT expr 										{$$ = $2; code(not_); }
+
+newl: 
+			 |'\n'
+			 |newl '\n'
 %%
 
 int follow(int expect, int ifyes, int ifno)
