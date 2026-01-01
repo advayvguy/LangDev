@@ -5,6 +5,8 @@
 #include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
+#define B 4
+#define C 8
 
 extern void execerror(const char *s, const char *t);
 extern Datum dispatch (Datum p1, Datum p2, symbol *s);
@@ -74,8 +76,15 @@ Inst *code(Inst f) //code returns a pointer to Inst, Inst-> pointer to a functio
 
 int execute(Inst *p) //p has the address of the cell with the instruction
 {
-	for (pc = p; *pc != STOP; ) (*(*pc++))(); //*p -> decays to pointer to a function, and (*pointer to a function)() decays to the function itsel
-	return 2;																				 //we keep incrementing the program counterf
+	for (pc = p; *pc != STOP; ) 
+	{
+			if (*pc == breakcode) return B;
+			else if (*pc == contcode)  return C;
+			int check = (*(*pc++))();
+			if (check == B) return B;
+			else if (check == C) return C;
+	}
+	return 2;
 }
 
 int constpush()
@@ -227,15 +236,38 @@ int whilecode()
 {
 	Datum d;
 	Inst *savepc = pc; 
-	execute(savepc+2);
-	d = pop(); //we evaluate the condtion here;
-	while (d.val)
+	while (1)
 	{
-		execute(*((Inst **)(savepc))); // run the body
-		execute(savepc+2); //we check for the condtion again here
-		d = pop();
+		
+		execute(savepc+2);
+		d = pop(); //we evaluate the condtion here;
+		if (d.val == 0) break;
+
+		int check = execute(*((Inst **)(savepc))); // run the body
+		if (check == B) break;
+		else if (check == C) continue;
 	}
 	pc = *((Inst **)(savepc+1));//next statement
+	return 2;
+}
+
+int forcode()
+{
+	Inst *savepc = pc;
+	execute(*((Inst **)(savepc)));
+	Datum d;
+	while (1)
+	{
+		execute(*((Inst **)(savepc+1)));
+		d = pop(); //we evaluate the condtion here;
+		if (d.val == 0) break;
+
+		int check = execute(*((Inst **)(savepc+3))); // run the body
+		if (check == B) break;
+		execute(*((Inst **)(savepc+2)));
+		if (check == C) continue;
+	}
+	pc = *((Inst **)(savepc+4));//next statement
 	return 2;
 }
 
@@ -246,8 +278,18 @@ int ifcode()
 
 	execute(savepc+3);
 	d = pop();
-	if (d.val) execute(*((Inst **)(savepc)));
-	else if (*((Inst **)(savepc+1))) execute(*((Inst **)(savepc+1)));
+	if (d.val) 
+	{
+		int check = execute(*((Inst **)(savepc))); 
+		if (check == B) return B;
+		else if (check == C) return C;
+	}
+	else if (*((Inst **)(savepc+1))) 
+	{
+		int check = execute(*((Inst **)(savepc+1)));
+		if (check == B) return B;
+		else if (check == C) return C;
+	}
 	pc = *((Inst **)(savepc+2));
 	return 2;
 }
@@ -338,5 +380,25 @@ int not_()
 	Datum d = pop();
 	d.val = !(d.val);
 	push(d);
+	return 2;
+}
+
+int inc()
+{
+	Datum d; 
+	d = pop();
+	if (d.sym->type != VAR) execerror("variable is undefined",d.sym->name);
+	d.sym->u.val = d.sym->u.val + 1;
+	push (d);
+	return 2;
+}
+
+int dec()
+{
+	Datum d; 
+	d = pop();
+	if (d.sym->type != VAR) execerror("variable is undefined",d.sym->name);
+	d.sym->u.val = d.sym->u.val - 1;
+	push (d);
 	return 2;
 }

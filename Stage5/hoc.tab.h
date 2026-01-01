@@ -51,16 +51,21 @@
      IF = 267,
      ELSE = 268,
      PRINT = 269,
-     OR = 270,
-     AND = 271,
-     NE = 272,
-     EQ = 273,
-     LE = 274,
-     LT = 275,
-     GE = 276,
-     GT = 277,
-     NOT = 278,
-     UNARYMINUS = 279
+     BREAK = 270,
+     CONTINUE = 271,
+     FOR = 272,
+     OR = 273,
+     AND = 274,
+     DEC = 275,
+     INC = 276,
+     NE = 277,
+     EQ = 278,
+     LE = 279,
+     LT = 280,
+     GE = 281,
+     GT = 282,
+     NOT = 283,
+     UNARYMINUS = 284
    };
 #endif
 /* Tokens.  */
@@ -76,16 +81,21 @@
 #define IF 267
 #define ELSE 268
 #define PRINT 269
-#define OR 270
-#define AND 271
-#define NE 272
-#define EQ 273
-#define LE 274
-#define LT 275
-#define GE 276
-#define GT 277
-#define NOT 278
-#define UNARYMINUS 279
+#define BREAK 270
+#define CONTINUE 271
+#define FOR 272
+#define OR 273
+#define AND 274
+#define DEC 275
+#define INC 276
+#define NE 277
+#define EQ 278
+#define LE 279
+#define LT 280
+#define GE 281
+#define GT 282
+#define NOT 283
+#define UNARYMINUS 284
 
 
 
@@ -98,7 +108,7 @@ typedef union YYSTYPE
 	symbol *sym; //symbol table pointer type
 }
 /* Line 1529 of yacc.c.  */
-#line 102 "hoc.tab.h"
+#line 112 "hoc.tab.h"
 	YYSTYPE;
 # define yystype YYSTYPE /* obsolescent; will be withdrawn */
 # define YYSTYPE_IS_DECLARED 1

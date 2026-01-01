@@ -24,12 +24,12 @@ extern Datum pop();
 
 typedef int (*Inst)();
 #define STOP (Inst)0 //STOP- value- NULL; type- pointer to a function that returns int
+#define contcode (Inst)8
+#define breakcode (Inst)4
 
 extern Inst *prog, *progp, *code(Inst f);
 extern int eval(), add(), sub(), mul(), div_(), negate(), power(), mod(), sys(), prevset();
 extern int assign(), bltin(), varpush(), constpush(), print();
 extern int prexpr();
-extern int gt(), ge(), lt(), le(), eq(), ne(), and_(), or_(), not_();
-extern int ifcode(), whilecode();
-
-
+extern int gt(), ge(), lt(), le(), eq(), ne(), and_(), or_(), not_(), inc(), dec();
+extern int ifcode(), whilecode(), forcode();

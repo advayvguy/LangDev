@@ -37,12 +37,12 @@ void yyerror(char *s); //called upon by yylex for misc errors
 	symbol *sym; //symbol table pointer type
 }
 
-%token <sym> NUMBER VAR BLTIN UNDEF CNST BLTIN2 BLTIN0 SYS WHILE IF ELSE PRINT 
-%type  <inst> stmt asgn expr stmtlist cond while if end newl
+%token <sym> NUMBER VAR BLTIN UNDEF CNST BLTIN2 BLTIN0 SYS WHILE IF ELSE PRINT BREAK CONTINUE FOR
+%type  <inst> stmt asgn expr stmtlist cond while if end newl break continue for fexpr
 %right '='
 %left OR
 %left AND
-%left GT GE LT LE EQ NE
+%left GT GE LT LE EQ NE INC DEC
 %left '+' '-'
 %left '*' '/' '%'
 %left  UNARYMINUS NOT
@@ -65,17 +65,28 @@ list:
 asgn:	 VAR '=' expr 									{$$ = $3; code3(varpush, (Inst)$1, assign); }
 			|CNST '=' expr									{execerror("constant cant be changed",$1->name); }
 
-stmt: 	 expr 																		{code((Inst)pop); }
+stmt: 	expr 																		{code((Inst)pop); }
+				|break
+				|continue
 				|PRINT expr 															{code(prexpr); $$ = $2; }
-				|while cond newl stmt end 								{($1)[1] = (Inst)$4; ($1)[2] = (Inst)$5; }
-				|if cond newl stmt end										{($1)[1] = (Inst)$4; ($1)[3] = (Inst)$5; }
-				|if cond newl stmt end newl  ELSE newl stmt end	{($1)[1] = (Inst)$4; ($1)[2] = (Inst)$9; ($1)[3] = (Inst)$10; }
-				|'{' stmtlist '}'													{$$ = $2; }
+				|for '(' fexpr ';' fexpr ';' fexpr ')' newl stmt end 	{	($1)[1] = (Inst)$3; 
+																															($1)[2] = (Inst)$5;
+																															($1)[3] = (Inst)$7; 
+																															($1)[4] = (Inst)$10;
+																															($1)[5] = (Inst)$11; }
+
+				|while cond newl stmt end 											{($1)[1] = (Inst)$4; ($1)[2] = (Inst)$5; }
+				|if cond newl stmt end													{($1)[1] = (Inst)$4; ($1)[3] = (Inst)$5; }
+				|if cond newl stmt end ELSE newl stmt end 			{($1)[1] = (Inst)$4; ($1)[2] = (Inst)$8; ($1)[3] = (Inst)$9; }
+				|'{' stmtlist '}'																{$$ = $2; }
 
 
 cond:		'(' expr ')' 									{code(STOP); $$ = $2; }
 
 while:	WHILE													{$$ = code3(whilecode, STOP, STOP); }
+
+
+for: 		FOR 													{$$ = code3(forcode, STOP, STOP); code3(STOP,STOP,STOP);}
 
 if:			IF 														{$$ = code(ifcode); code3(STOP,STOP,STOP); }
 
@@ -85,10 +96,14 @@ stmtlist:															{$$ = progp; }
 				|stmtlist newl
 				|stmtlist stmt newl
 
+fexpr:	expr 												{code(STOP); $$ = $1; }
+
 expr: 	 NUMBER												{$$ = code2(constpush, (Inst)$1); }
     		|VAR													{$$ = code3(varpush, (Inst)$1, eval); } 
+				|VAR INC											{$$ = code3(varpush, (Inst)$1, inc); }
+				|VAR DEC											{$$ = code3(varpush, (Inst)$1, dec); }
 				|CNST													{$$ = code2(constpush, (Inst)$1); }
-				|asgn
+				|asgn                         
 				|BLTIN '(' expr ')' 					{$$ = $3; code2(bltin, (Inst)$1); }
 				|BLTIN2 '(' expr ',' expr ')'	{$$ = $5; code2(bltin, (Inst)$1); }
 				|BLTIN0 '(' ')'								{code2(bltin, (Inst)$1); }
@@ -109,6 +124,10 @@ expr: 	 NUMBER												{$$ = code2(constpush, (Inst)$1); }
 				|expr AND expr								{code(and_); }
 				|expr OR expr 								{code(or_); }
 				|NOT expr 										{$$ = $2; code(not_); }
+
+break:	BREAK													{$$ = code(breakcode); }
+
+continue: CONTINUE										{$$ = code(contcode); }
 
 newl: 
 			 |'\n'
@@ -135,7 +154,6 @@ int yylex(void)
 		yylval.sym = install("", NUMBER, d); //we are adding the number to the symbol table, we dont assign a name to it.
 		return NUMBER;
 	} 
-
 	else if (isalpha(c))
 	{
 		symbol *s;
@@ -190,6 +208,8 @@ int yylex(void)
 	case '!': return follow('=',NE,NOT);
 	case '|': return follow('|',OR,'|');
 	case '&': return follow('&',AND,'&');
+	case '+': return follow ('+',INC,'+'); 
+	case '-':  return follow ('+',INC,'+'); 
 	case '\n': lineno++; return '\n';
 	default: return c;
 	}

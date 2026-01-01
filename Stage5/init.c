@@ -70,8 +70,11 @@ static struct
 {
 	"if",			IF,
 	"else",		ELSE,
+	"for", 		FOR,
 	"while",	WHILE,
 	"print",	PRINT,
+	"break", BREAK,
+	"continue", CONTINUE,
 	0,0
 };
 

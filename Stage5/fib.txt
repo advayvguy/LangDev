@@ -8,9 +8,7 @@ while (i < 20)
 	x = fib
 	if (fib % 2 == 1) {
 		print(fib)
-	}
-
-	else
+	}	else
 	{
 		print(0)
 	}
