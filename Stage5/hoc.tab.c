@@ -2095,7 +2095,7 @@ int yylex(void)
 	case '|': return follow('|',OR,'|');
 	case '&': return follow('&',AND,'&');
 	case '+': return follow ('+',INC,'+'); 
-	case '-':  return follow ('+',DEC,'+'); 
+	case '-':  return follow ('-',DEC,'-'); 
 	case '\n': lineno++; return '\n';
 	default: return c;
 	}
