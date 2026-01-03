@@ -1,0 +1,37 @@
+void y()
+{
+	print "y\n"
+	return 
+}
+
+void A()
+{
+	print "a"
+	y()
+	return
+}
+
+void v()
+{
+	print "v"
+	A()
+	return
+}
+
+
+void d()
+{
+	print "d"
+	v()
+	return
+}
+
+
+void a()
+{
+	print "a"
+	d()
+	return
+}
+
+a()

@@ -1,0 +1,45 @@
+a = 0
+b = 0
+c = 0
+
+//reading inputs 
+
+print "enter a: "
+read(a)
+print "enter b: "
+read(b)
+print "enter c: "
+read(c)
+print "--------------------------------------------------------------------------------------------\n"
+
+void del()
+{
+	check = (($2)^2) - (4*$1*$3)
+	if ($1 == 0)
+	{
+		print "not a quadratic equation","\n"
+		return
+	}
+	if (check >= 0)
+	{
+
+		e1 = (-$2 + sqrt(check))/(2*$1)
+		e2 = (-$2 - sqrt(check))/(2*$1)
+
+		print "x1 = ",e1,"\n"
+		print "x2 = ",e2,"\n"
+		if (e1 == e2) print "roots are equal \n"
+
+	} else {
+		check = -check
+		i = (sqrt(check))/(2*$1)
+		r = (-$2)/(2*$1)
+		print "x1 = ", r , "+", i, "i\n"
+		print "x2 = ", r , "-", i, "i\n"
+
+		print "the equation has complex roots\n"
+	}
+}
+
+del(a,b,c)
+print "--------------------------------------------------------------------------------------------\n"
