@@ -80,6 +80,8 @@ static struct
 	"print",		PRINT,
 	"read",			READ,
 	"return", 	RETURN,
+	"arr",			ARR,
+	"len",		 ARRLEN,
 	0,0
 };
 

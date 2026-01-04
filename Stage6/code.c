@@ -320,7 +320,7 @@ int ifcode()
 	return 2;
 }
 
-int is_integer(double x) 
+int isinteger(double x) 
 {
     if (!isfinite(x)) return 0;
     return fabs(x - nearbyint(x)) <= DBL_EPSILON * fabs(x);
@@ -329,7 +329,7 @@ int is_integer(double x)
 int prexpr()
 {
 	Datum d = pop();
-	if (is_integer(d.val)) printf("%d",(int)d.val);
+	if (isinteger(d.val)) printf("%d",(int)d.val);
 	else printf("%.6lf", d.val);
 	return 2;
 }
@@ -558,24 +558,80 @@ int prstr()
 int varread()
 {
     Datum d;
-    symbol *var = (symbol *)*pc++;
     double cval;
-
-    // Optional: Clear the buffer of leftover script characters
-    // if you are running interactively.
-    // while (getc(stdin) != '\n'); 
-
-    // Read from the terminal explicitly
     if (fscanf(stdin, "%lf", &cval) != 1) {
-        // If it fails, clear the bad character so it doesn't loop
         getc(stdin); 
-        execerror("non number to read into", var->name);
+        execerror("non number to read into", "");
     } else {
-        var->u.val = cval;
+			d.val = cval;
+			push(d);
     }
-
-    var->type = VAR;
-    d.val = var->u.val;
-    push(d);
     return 2;
+}
+
+int arrinit()
+{
+	symbol *sp = (symbol *)*pc++;
+	Datum d = pop();
+	if (!isinteger(d.val)) execerror("non integral index","");
+	int num = (int)d.val;
+	double *check = (double *)malloc(sizeof(double)*(num + 1));
+	if (check == NULL) execerror("out of space","");
+	sp->u.arrptr = check;
+	(sp->u.arrptr)[0] = num;
+	return 2;
+}
+
+int arrassign()
+{
+	symbol *sp = (symbol *)*pc++;
+	int args = (int)*pc++;
+
+	double *check = (double *)malloc(sizeof(double)*(args+1));
+	if (check == NULL) execerror("out of space","");
+	sp->u.arrptr = check;
+	(sp->u.arrptr)[0] = args;
+	for (int i = args; i > 0; i--)
+	{
+		Datum d;
+		d = pop();
+		(sp->u.arrptr)[i] = d.val;
+	}
+	return 2;
+}
+
+int arrpush()
+{
+	symbol *sp = (symbol *)*pc++;
+	if(sp->type != ARRAY) execerror("not an array",sp->name);
+	Datum d = pop();
+	Datum in = pop();
+	if (!isinteger(in.val)) execerror("non integral index","");
+	int index =(int)in.val + 1;
+	if (index < 1 || index > (sp->u.arrptr)[0]) execerror("illegal reference","");
+	(sp->u.arrptr)[index] = d.val;
+	push(d);
+	return 2;
+}
+
+int arrpop()
+{
+	symbol *sp = (symbol *)*pc++;
+	if(sp->type != ARRAY) execerror("not an array",sp->name);
+	Datum d = pop();
+	if(!isinteger(d.val)) execerror("non integral index","");
+	int index = (int)d.val + 1;
+	if (index < 1 || index > (sp->u.arrptr)[0]) execerror("illegal reference","");
+	Datum d1;
+	d1.val = (sp->u.arrptr)[index];
+	push(d1);
+	return 2;
+}
+
+int arrlen()
+{
+	symbol *sp = (symbol *)*pc++;
+	Datum d;
+	d.val = (sp->u.arrptr)[0];
+	push(d);
 }

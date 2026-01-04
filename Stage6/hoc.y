@@ -48,11 +48,11 @@ FILE *fin;
 	int narg; //number of arguments			
 }
 
-%token <sym> NUMBER VAR BLTIN UNDEF CNST BLTIN2 BLTIN0 SYS WHILE IF ELSE PRINT BREAK CONTINUE FOR STRING
-%token <sym> FUNCTION PROCEDURE RETURN FUNC PROC READ
+%token <sym> NUMBER VAR BLTIN UNDEF CNST BLTIN2 BLTIN0 SYS WHILE IF ELSE PRINT BREAK CONTINUE FOR STRING ARRLEN
+%token <sym> FUNCTION PROCEDURE RETURN FUNC PROC READ ARR ARRAY
 %token <narg> ARG
 %type  <inst> stmt asgn expr stmtlist prlist 
-%type  <inst> cond while if end newl break continue for fexpr begin
+%type  <inst> cond while if end newl break continue for fexpr begin array
 %type  <sym>	procname
 %type  <narg> arglist
 
@@ -76,15 +76,16 @@ list:
 			|list stmt '\n'									{code(STOP); return 1; }
 
 asgn:	 VAR '=' expr 									{$$ = $3; code3(varpush, (Inst)$1, assign); }
+			|ARRAY '[' expr ']' '=' expr    {$$ = $6; code2(arrpush, (Inst)$1); }
 			|CNST '=' expr									{execerror("constant cant be changed",$1->name); }
 			|ARG '=' expr										{defnonly("$"); code2(argassign, (Inst)$1); $$ = $3; }
 
 stmt: 	 expr 																		{code((Inst)pop); }
+				|array
 				|RETURN 																	{defnonly("return"); code(procret); }
 				|RETURN expr															{defnonly("return"); $$ = $2; code(funcret); }
 				|PROCEDURE begin '(' arglist ')'					{$$ = $2; code3(call, (Inst)$1, (Inst)$4); }
 				|PRINT prlist 														{$$ = $2; }
-				|READ '(' VAR ')'								{$$ = code2(varread, (Inst)$3); } 
 				|break
 				|continue
 				|PRINT expr 																					{ code(prexpr); $$ = $2; }
@@ -125,8 +126,10 @@ expr: 	 NUMBER												{$$ = code2(constpush, (Inst)$1); }
 				|CNST													{$$ = code2(constpush, (Inst)$1); }
 				|asgn                         
 				|FUNCTION begin '(' arglist ')' {$$ = $2; code3(call, (Inst)$1, (Inst)$4); }
+				|ARRAY '[' expr ']'						{$$ = code2(arrpop, (Inst)$1); }
 				|BLTIN '(' expr ')' 					{$$ = $3; code2(bltin, (Inst)$1); }
 				|BLTIN2 '(' expr ',' expr ')'	{$$ = $5; code2(bltin, (Inst)$1); }
+				|READ '('')'									{$$ = code(varread); }
 				|BLTIN0 '(' ')'								{code2(bltin, (Inst)$1); }
 				|expr '+' expr 	    					{code(add); }
 				|expr '-' expr  	    				{code(sub); }
@@ -145,6 +148,7 @@ expr: 	 NUMBER												{$$ = code2(constpush, (Inst)$1); }
 				|expr AND expr								{code(and_); }
 				|expr OR expr 								{code(or_); }
 				|NOT expr 										{$$ = $2; code(not_); }
+				|ARRLEN '(' ARRAY ')'					{$$ = code2(arrlen, (Inst)$3); }
 
 begin:																{$$ = progp; }
 
@@ -156,9 +160,13 @@ prlist:	expr													{code(prexpr); }
 defn: 	FUNC procname  {$2->type = FUNCTION; indef = 1; }  '(' ')' newl stmt {code(procret); define($2); indef = 0; }
 			 |PROC procname  {$2->type = PROCEDURE; indef = 1; } '(' ')' newl stmt {code(procret); define($2); indef = 0; }
 
+array:  ARR VAR '[' expr  ']' 										         {$2->type = ARRAY; $$ = code2(arrinit, (Inst)$2); }
+		 	 |ARR VAR '[' ']' '=' 	'[' arglist ']'  						 {$2->type = ARRAY; $$ = code3(arrassign, (Inst)$2, (Inst)$7); }
+
 procname:	VAR
 				 |FUNCTION
 				 |PROCEDURE
+				 |ARRAY
 
 arglist: 															{$$ = 0; }
 			 	 |expr 												{$$ = 1; }

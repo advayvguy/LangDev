@@ -2,12 +2,14 @@ typedef struct symbol
 {
 	char *name; //name of symbol
 	short type; //VAR, BUILT IN,CNST and UNDEF (seen but not defined yet)
+	
 	union
 	{
 		double val; //if its a variable
 		double (*ptr)(); //if its a builtin, u.ptr is a pointer to a function that returns double
 		int (*defn)(); //function or procedure
-		char *str; //string 
+		char *str; //string
+		double *arrptr;
 	} u;
 	struct symbol *next; //a linked list (for the symbol table)
 } symbol;
@@ -32,7 +34,7 @@ typedef int (*Inst)();
 extern Inst *prog, *progp, *code(Inst f), *progbase;
 extern int eval(), add(), sub(), mul(), div_(), negate(), power(), mod(), sys(), prevset(), define(symbol* sp), call();
 extern int assign(), bltin(), varpush(), constpush(), print(), funcret(), procret(), ret(), arg(), argassign();
-extern int varread();
-extern int prexpr(), prstr();
+extern int varread(), arrpop(), arrpush(), arrinit(), arrassign();
+extern int prexpr(), prstr(), arrlen();
 extern int gt(), ge(), lt(), le(), eq(), ne(), and_(), or_(), not_(), inc(), dec();
 extern int ifcode(), whilecode(), forcode();
