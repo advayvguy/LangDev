@@ -6,6 +6,8 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <float.h>
+#include <string.h>
+
 #define B 4
 #define C 8
 
@@ -16,7 +18,6 @@ extern void echeck(double val);
 
 static Datum *stack;
 Inst *prog;
-
 static Datum *stackp; //returns the pointer to the next free spot on the stack
 static int sizes = 1000;
 
@@ -33,7 +34,9 @@ typedef struct Frame
 	symbol *sp;  //keeps in track of all the symbol table entries in a function
 	Inst *retpc; //where to return the program after the return statement is seen
 	Datum *argn; //nth argument on the stack
-	int nargs; //number of arguments
+	int nargs; //number of argument
+	symbol *local;
+	int currstatus;
 } Frame;
 
 Frame *frame; //recursive/fucntion calls within functions 
@@ -104,11 +107,11 @@ int execute(Inst *p) //p has the address of the cell with the instruction
 {
 	for (pc = p; *pc != STOP && !returning; ) 
 	{
-			if (*pc == breakcode) return B;
-			else if (*pc == contcode)  return C;
-			int check = (*(*pc++))();
-			if (check == B) return B;
-			else if (check == C) return C;
+				if (*pc == breakcode) return B;
+				else if (*pc == contcode)  return C;
+				int check = (*(*pc++))();
+				if (check == B) return B;
+				else if (check == C) return C;
 	}
 	return 2;
 }
@@ -121,13 +124,23 @@ int constpush()
 	return 2;
 }
 
-int varpush()
-{
-	Datum d;
-	d.sym = (symbol *)(*pc++);
-	if (*pc != assign && d.sym->type == UNDEF) execerror("is not defined",d.sym->name);
-	push(d);
-	return 2;
+int varpush() {
+    Datum d;
+    symbol *sp = (symbol *)(*pc++);
+    d.sym = sp; // Default to global
+
+    // If fp > frame, we are inside a function call
+    if (fp > frame && fp->nargs > 0) {
+        for (int i = 0; i < fp->currstatus; i++) {
+            if (fp->local[i].name && strcmp(fp->local[i].name, sp->name) == 0) {
+                d.sym = &(fp->local)[i];
+                break;
+            }
+        }
+    }
+    if (*pc != assign && d.sym->type == UNDEF) execerror("is not defined", d.sym->name);
+    push(d);
+    return 2;
 }
 
 int add()
@@ -442,24 +455,39 @@ int dec()
 //   										^^^^^^^^^^^^^^
 //   													PC
 
-int call()
-{
-	symbol *s = (symbol *)pc[0];
+int call() {
+    symbol *s = (symbol *)pc[0];
+    if (fp++ >= &frame[nframe - 1])
+		{
+			nframe += 100;
+			Frame *check = (Frame *)realloc(frame, nframe);
+			if (check == NULL) execerror("buffer overflow","");
+			frame = check;
+		}
+    fp->sp = s;
+    fp->nargs = (int)pc[1];
+    fp->retpc = pc + 2;
+    fp->argn = stackp - 1; 
+    fp->local = (symbol *)calloc(fp->nargs, sizeof(symbol)); // Use calloc to zero memory
+    fp->currstatus = 0;
 
-	if (fp++ >= &frame[nframe - 1])
-	{
-		nframe += 100;
-		Frame *check = (Frame *)realloc(frame, sizeof(Frame)*nframe);
-		if (check == NULL) execerror(s->name, "call nested too deeply");
-		else frame = check;
-	}
-	fp->sp = s;
-	fp->nargs = (int)pc[1];
-	fp ->retpc = pc + 2;
-	fp->argn = stackp - 1; //last argument
-	execute(s->u.defn);   //s->u.defn = the first instruction 
-	returning = 0;
-	return 2;
+    execute(s->u.defn);   
+    returning = 0;
+    return 2;
+}
+
+int ret() {
+    // Clean up THIS frame's local memory before leaving
+    for (int i = 0; i < fp->currstatus; i++) {
+        if (fp->local[i].name) free(fp->local[i].name);
+    }
+    free(fp->local);
+
+    // No need to pop arguments here if parassgn already pop()'d them
+    pc = (Inst *)fp->retpc;
+    --fp;
+    returning = 1;
+    return 2;
 }
 
 int funcret()
@@ -476,19 +504,6 @@ int procret()
 {
 	if(fp->sp->type == FUNCTION) execerror(fp->sp->name,"(func) returns no value");
 	ret();
-	return 2;
-}
-
-int ret()
-{
-	int i;
-	for(i = 0; i < fp->nargs; i++)
-	{
-		pop();
-	}
-	pc = (Inst *)fp->retpc;
-	--fp;
-	returning = 1;
 	return 2;
 }
 
@@ -634,4 +649,34 @@ int arrlen()
 	Datum d;
 	d.val = (sp->u.arrptr)[0];
 	push(d);
+	return 2;
+}
+
+int cnflush()
+{
+	int check = (int)(*pc++);
+	if (check != fp->nargs) execerror("not enough arguments passed","");
+}
+
+char *checklen(int len)
+{
+	char *check = (char *)malloc(len);
+	if (check == NULL) execerror("not enough space","");
+	else return check;
+}
+
+int parassgn() {
+    symbol *sp = (symbol *)(*pc++);
+    // Get value from top of stack and pop it
+    Datum d = pop(); 
+    (fp->local)[fp->currstatus].u.val = d.val;
+    
+    // Allocate space including the null terminator
+    int size = strlen(sp->name) + 1; 
+    (fp->local)[fp->currstatus].name = checklen(size);
+    strcpy((fp->local)[fp->currstatus].name, sp->name);
+    
+    (fp->local)[fp->currstatus].type = VAR;
+    fp->currstatus++;
+    return 2;
 }

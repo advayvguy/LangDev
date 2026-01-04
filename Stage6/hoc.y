@@ -48,13 +48,13 @@ FILE *fin;
 	int narg; //number of arguments			
 }
 
-%token <sym> NUMBER VAR BLTIN UNDEF CNST BLTIN2 BLTIN0 SYS WHILE IF ELSE PRINT BREAK CONTINUE FOR STRING ARRLEN
+%token <sym> NUMBER VAR BLTIN UNDEF CNST BLTIN2 BLTIN0 SYS WHILE IF ELSE PRINT BREAK CONTINUE FOR STRING ARRLEN 
 %token <sym> FUNCTION PROCEDURE RETURN FUNC PROC READ ARR ARRAY
 %token <narg> ARG
 %type  <inst> stmt asgn expr stmtlist prlist 
-%type  <inst> cond while if end newl break continue for fexpr begin array
+%type  <inst> cond while if end newl break continue for fexpr begin array defn
 %type  <sym>	procname
-%type  <narg> arglist
+%type  <narg> arglist paramlist
 
 %right '='
 %left OR
@@ -157,8 +157,8 @@ prlist:	expr													{code(prexpr); }
 			 |prlist ',' expr 							{code(prexpr); }
 			 |prlist ',' STRING							{$$ = code2(prstr, (Inst)$3); }
 
-defn: 	FUNC procname  {$2->type = FUNCTION; indef = 1; }  '(' ')' newl stmt {code(procret); define($2); indef = 0; }
-			 |PROC procname  {$2->type = PROCEDURE; indef = 1; } '(' ')' newl stmt {code(procret); define($2); indef = 0; }
+defn: 	FUNC procname  {$2->type = FUNCTION; indef = 1;  }  '(' paramlist ')' {code2(cnflush,(Inst)$5); } newl stmt {code(procret); define($2); indef = 0; }
+			 |PROC procname  {$2->type = PROCEDURE; indef = 1; }  '(' paramlist ')' {code2(cnflush,(Inst)$5); } newl stmt {code(procret); define($2); indef = 0; }
 
 array:  ARR VAR '[' expr  ']' 										         {$2->type = ARRAY; $$ = code2(arrinit, (Inst)$2); }
 		 	 |ARR VAR '[' ']' '=' 	'[' arglist ']'  						 {$2->type = ARRAY; $$ = code3(arrassign, (Inst)$2, (Inst)$7); }
@@ -171,6 +171,10 @@ procname:	VAR
 arglist: 															{$$ = 0; }
 			 	 |expr 												{$$ = 1; }
 				 |arglist ',' expr 						{$$ = $1 + 1; }
+
+paramlist:														{$$ = 0; }
+				 |VAR 												{$$ = 1; code2(parassgn, (Inst)$1); }
+				 |VAR ',' paramlist 					{$$ = $3 + 1; code2(parassgn, (Inst)$1); }
 
 break:	BREAK													{$$ = code(breakcode); }
 
@@ -225,7 +229,7 @@ int yylex(void)
 		do
 		{
 			*p++ = c;
-		} while ((c = getc(fin)) != EOF && isalnum(c));
+		} while ((c = getc(fin)) != EOF && (isalnum(c) || c == '_'));
 		if (strcmp("sys",sbuf) == 0)
 		{
 			if (c == '-')

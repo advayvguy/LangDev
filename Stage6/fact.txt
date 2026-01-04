@@ -1,14 +1,12 @@
-a = 0
-print "enter number: "
-read(a)
+a = read()
 
-func fact()
+func fact(x)
 {
-	if ($1 == 0)
+	if (x == 0)
 	{
 		return 1
 	} else {
-		return ($1*fact($1-1))
+		return (x*fact(x-1))
 	}
 }
 print "------------------------------------------------------------------------\n"

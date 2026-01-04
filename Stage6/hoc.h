@@ -7,7 +7,7 @@ typedef struct symbol
 	{
 		double val; //if its a variable
 		double (*ptr)(); //if its a builtin, u.ptr is a pointer to a function that returns double
-		int (*defn)(); //function or procedure
+		int (*defn)();
 		char *str; //string
 		double *arrptr;
 	} u;
@@ -35,6 +35,6 @@ extern Inst *prog, *progp, *code(Inst f), *progbase;
 extern int eval(), add(), sub(), mul(), div_(), negate(), power(), mod(), sys(), prevset(), define(symbol* sp), call();
 extern int assign(), bltin(), varpush(), constpush(), print(), funcret(), procret(), ret(), arg(), argassign();
 extern int varread(), arrpop(), arrpush(), arrinit(), arrassign();
-extern int prexpr(), prstr(), arrlen();
+extern int prexpr(), prstr(), arrlen(), cnflush(), parassgn();
 extern int gt(), ge(), lt(), le(), eq(), ne(), and_(), or_(), not_(), inc(), dec();
 extern int ifcode(), whilecode(), forcode();

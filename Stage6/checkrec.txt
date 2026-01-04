@@ -1,0 +1,14 @@
+void foo(x)
+{
+	if (x == 0)
+	{
+		return
+	} else
+	{
+		foo(x-1)
+		print x,"\n"
+	}
+}
+
+x = read()
+foo(x)

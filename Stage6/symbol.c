@@ -36,3 +36,5 @@ symbol *lookup(char *s)
 	}
 	return NULL;
 }
+
+

@@ -8,11 +8,11 @@ for(i = 0; i < len(foo); i++)
 	foo[i] = read()
 }
 
-void swap()
+void swap(i,j)
 {
-	temp = foo[$1]
-	foo[$1] = foo[$2]
-	foo[$2] = temp
+	temp = foo[i]
+	foo[i] = foo[j]
+	foo[j] = temp
 }
 
 for(i = 0; i < len(foo); i++)

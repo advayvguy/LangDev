@@ -7,7 +7,7 @@ typedef struct symbol
 	{
 		double val; //if its a variable
 		double (*ptr)(); //if its a builtin, u.ptr is a pointer to a function that returns double
-		int (*defn)(); //function or procedure
+		int (*defn)();
 		char *str; //string
 		double *arrptr;
 	} u;
@@ -35,7 +35,7 @@ extern Inst *prog, *progp, *code(Inst f), *progbase;
 extern int eval(), add(), sub(), mul(), div_(), negate(), power(), mod(), sys(), prevset(), define(symbol* sp), call();
 extern int assign(), bltin(), varpush(), constpush(), print(), funcret(), procret(), ret(), arg(), argassign();
 extern int varread(), arrpop(), arrpush(), arrinit(), arrassign();
-extern int prexpr(), prstr(), arrlen();
+extern int prexpr(), prstr(), arrlen(), cnflush(), parassgn();
 extern int gt(), ge(), lt(), le(), eq(), ne(), and_(), or_(), not_(), inc(), dec();
 extern int ifcode(), whilecode(), forcode();
 %{
@@ -88,13 +88,13 @@ FILE *fin;
 	int narg; //number of arguments			
 }
 
-%token <sym> NUMBER VAR BLTIN UNDEF CNST BLTIN2 BLTIN0 SYS WHILE IF ELSE PRINT BREAK CONTINUE FOR STRING ARRLEN
+%token <sym> NUMBER VAR BLTIN UNDEF CNST BLTIN2 BLTIN0 SYS WHILE IF ELSE PRINT BREAK CONTINUE FOR STRING ARRLEN 
 %token <sym> FUNCTION PROCEDURE RETURN FUNC PROC READ ARR ARRAY
 %token <narg> ARG
 %type  <inst> stmt asgn expr stmtlist prlist 
-%type  <inst> cond while if end newl break continue for fexpr begin array
+%type  <inst> cond while if end newl break continue for fexpr begin array defn
 %type  <sym>	procname
-%type  <narg> arglist
+%type  <narg> arglist paramlist
 
 %right '='
 %left OR
@@ -197,8 +197,8 @@ prlist:	expr													{code(prexpr); }
 			 |prlist ',' expr 							{code(prexpr); }
 			 |prlist ',' STRING							{$$ = code2(prstr, (Inst)$3); }
 
-defn: 	FUNC procname  {$2->type = FUNCTION; indef = 1; }  '(' ')' newl stmt {code(procret); define($2); indef = 0; }
-			 |PROC procname  {$2->type = PROCEDURE; indef = 1; } '(' ')' newl stmt {code(procret); define($2); indef = 0; }
+defn: 	FUNC procname  {$2->type = FUNCTION; indef = 1;  }  '(' paramlist ')' {code2(cnflush,(Inst)$5); } newl stmt {code(procret); define($2); indef = 0; }
+			 |PROC procname  {$2->type = PROCEDURE; indef = 1; }  '(' paramlist ')' {code2(cnflush,(Inst)$5); } newl stmt {code(procret); define($2); indef = 0; }
 
 array:  ARR VAR '[' expr  ']' 										         {$2->type = ARRAY; $$ = code2(arrinit, (Inst)$2); }
 		 	 |ARR VAR '[' ']' '=' 	'[' arglist ']'  						 {$2->type = ARRAY; $$ = code3(arrassign, (Inst)$2, (Inst)$7); }
@@ -211,6 +211,10 @@ procname:	VAR
 arglist: 															{$$ = 0; }
 			 	 |expr 												{$$ = 1; }
 				 |arglist ',' expr 						{$$ = $1 + 1; }
+
+paramlist:														{$$ = 0; }
+				 |VAR 												{$$ = 1; code2(parassgn, (Inst)$1); }
+				 |VAR ',' paramlist 					{$$ = $3 + 1; code2(parassgn, (Inst)$1); }
 
 break:	BREAK													{$$ = code(breakcode); }
 
@@ -265,7 +269,7 @@ int yylex(void)
 		do
 		{
 			*p++ = c;
-		} while ((c = getc(fin)) != EOF && isalnum(c));
+		} while ((c = getc(fin)) != EOF && (isalnum(c) || c == '_'));
 		if (strcmp("sys",sbuf) == 0)
 		{
 			if (c == '-')
@@ -388,6 +392,46 @@ int main(int argc, char **argv)
 	if (fin != stdin) fclose(fin);
 	return 0;
 }
+#include <string.h>
+#include <stdlib.h>
+#include <stdio.h>
+#include "hoc.h"
+#include "hoc.tab.h"
+
+static symbol *root = NULL;
+extern void execerror(char *s, char *t);
+
+void *emalloc(int size)
+{
+	void *allocheck = malloc(size);
+	if (allocheck == NULL) execerror("memory limit exceeded", "");
+	return allocheck;
+}
+
+symbol *install(char *s, int t, double val)
+{
+	symbol *sp;
+	sp = emalloc(sizeof(symbol));
+	sp->name = emalloc(strlen(s) + 1);
+	strcpy(sp->name, s);
+	sp->type = t;
+	sp->u.val = val;
+	sp->next = root;
+	root = sp;
+	return sp;
+}
+
+symbol *lookup(char *s)
+{
+	symbol *i;
+	for(i = root; i != NULL; i = i->next)
+	{
+		if(strcmp(i->name,s) == 0) return i;
+	}
+	return NULL;
+}
+
+
 //contains routines that execute  machine instructions and manipulate the stack
 
 #include "hoc.h"
@@ -396,6 +440,8 @@ int main(int argc, char **argv)
 #include <stdio.h>
 #include <stdlib.h>
 #include <float.h>
+#include <string.h>
+
 #define B 4
 #define C 8
 
@@ -406,7 +452,6 @@ extern void echeck(double val);
 
 static Datum *stack;
 Inst *prog;
-
 static Datum *stackp; //returns the pointer to the next free spot on the stack
 static int sizes = 1000;
 
@@ -423,7 +468,9 @@ typedef struct Frame
 	symbol *sp;  //keeps in track of all the symbol table entries in a function
 	Inst *retpc; //where to return the program after the return statement is seen
 	Datum *argn; //nth argument on the stack
-	int nargs; //number of arguments
+	int nargs; //number of argument
+	symbol *local;
+	int currstatus;
 } Frame;
 
 Frame *frame; //recursive/fucntion calls within functions 
@@ -494,11 +541,11 @@ int execute(Inst *p) //p has the address of the cell with the instruction
 {
 	for (pc = p; *pc != STOP && !returning; ) 
 	{
-			if (*pc == breakcode) return B;
-			else if (*pc == contcode)  return C;
-			int check = (*(*pc++))();
-			if (check == B) return B;
-			else if (check == C) return C;
+				if (*pc == breakcode) return B;
+				else if (*pc == contcode)  return C;
+				int check = (*(*pc++))();
+				if (check == B) return B;
+				else if (check == C) return C;
 	}
 	return 2;
 }
@@ -511,13 +558,23 @@ int constpush()
 	return 2;
 }
 
-int varpush()
-{
-	Datum d;
-	d.sym = (symbol *)(*pc++);
-	if (*pc != assign && d.sym->type == UNDEF) execerror("is not defined",d.sym->name);
-	push(d);
-	return 2;
+int varpush() {
+    Datum d;
+    symbol *sp = (symbol *)(*pc++);
+    d.sym = sp; // Default to global
+
+    // If fp > frame, we are inside a function call
+    if (fp > frame && fp->nargs > 0) {
+        for (int i = 0; i < fp->currstatus; i++) {
+            if (fp->local[i].name && strcmp(fp->local[i].name, sp->name) == 0) {
+                d.sym = &(fp->local)[i];
+                break;
+            }
+        }
+    }
+    if (*pc != assign && d.sym->type == UNDEF) execerror("is not defined", d.sym->name);
+    push(d);
+    return 2;
 }
 
 int add()
@@ -832,24 +889,39 @@ int dec()
 //   										^^^^^^^^^^^^^^
 //   													PC
 
-int call()
-{
-	symbol *s = (symbol *)pc[0];
+int call() {
+    symbol *s = (symbol *)pc[0];
+    if (fp++ >= &frame[nframe - 1])
+		{
+			nframe += 100;
+			Frame *check = (Frame *)realloc(frame, nframe);
+			if (check == NULL) execerror("buffer overflow","");
+			frame = check;
+		}
+    fp->sp = s;
+    fp->nargs = (int)pc[1];
+    fp->retpc = pc + 2;
+    fp->argn = stackp - 1; 
+    fp->local = (symbol *)calloc(fp->nargs, sizeof(symbol)); // Use calloc to zero memory
+    fp->currstatus = 0;
 
-	if (fp++ >= &frame[nframe - 1])
-	{
-		nframe += 100;
-		Frame *check = (Frame *)realloc(frame, sizeof(Frame)*nframe);
-		if (check == NULL) execerror(s->name, "call nested too deeply");
-		else frame = check;
-	}
-	fp->sp = s;
-	fp->nargs = (int)pc[1];
-	fp ->retpc = pc + 2;
-	fp->argn = stackp - 1; //last argument
-	execute(s->u.defn);   //s->u.defn = the first instruction 
-	returning = 0;
-	return 2;
+    execute(s->u.defn);   
+    returning = 0;
+    return 2;
+}
+
+int ret() {
+    // Clean up THIS frame's local memory before leaving
+    for (int i = 0; i < fp->currstatus; i++) {
+        if (fp->local[i].name) free(fp->local[i].name);
+    }
+    free(fp->local);
+
+    // No need to pop arguments here if parassgn already pop()'d them
+    pc = (Inst *)fp->retpc;
+    --fp;
+    returning = 1;
+    return 2;
 }
 
 int funcret()
@@ -866,19 +938,6 @@ int procret()
 {
 	if(fp->sp->type == FUNCTION) execerror(fp->sp->name,"(func) returns no value");
 	ret();
-	return 2;
-}
-
-int ret()
-{
-	int i;
-	for(i = 0; i < fp->nargs; i++)
-	{
-		pop();
-	}
-	pc = (Inst *)fp->retpc;
-	--fp;
-	returning = 1;
 	return 2;
 }
 
@@ -1024,6 +1083,56 @@ int arrlen()
 	Datum d;
 	d.val = (sp->u.arrptr)[0];
 	push(d);
+	return 2;
+}
+
+int cnflush()
+{
+	int check = (int)(*pc++);
+	if (check != fp->nargs) execerror("not enough arguments passed","");
+}
+
+char *checklen(int len)
+{
+	char *check = (char *)malloc(len);
+	if (check == NULL) execerror("not enough space","");
+	else return check;
+}
+
+int parassgn() {
+    symbol *sp = (symbol *)(*pc++);
+    // Get value from top of stack and pop it
+    Datum d = pop(); 
+    (fp->local)[fp->currstatus].u.val = d.val;
+    
+    // Allocate space including the null terminator
+    int size = strlen(sp->name) + 1; 
+    (fp->local)[fp->currstatus].name = checklen(size);
+    strcpy((fp->local)[fp->currstatus].name, sp->name);
+    
+    (fp->local)[fp->currstatus].type = VAR;
+    fp->currstatus++;
+    return 2;
+}
+//custom functions can be added here
+#include <math.h>
+#include <stdlib.h>
+#define PI 3.14159265358979323846
+double Rand()
+{
+	return (double)rand()/(double)RAND_MAX;
+}
+
+double Atan(double p1)
+{
+	double p = atan(p1);
+	return p*(180/PI);
+}
+
+double Atan2(double p1, double p2)
+{
+	double p = atan2(p1,p2);
+	return p*(180/PI);
 }
 #include "hoc.h"
 #include "hoc.tab.h"
@@ -1167,62 +1276,4 @@ void init()
 		s = install(builtin0s[i].name, BLTIN0, 0.0);
 		s->u.ptr = builtin0s[i].func;
 	}
-}
-#include <string.h>
-#include <stdlib.h>
-#include <stdio.h>
-#include "hoc.h"
-#include "hoc.tab.h"
-
-static symbol *root = NULL;
-extern void execerror(char *s, char *t);
-
-void *emalloc(int size)
-{
-	void *allocheck = malloc(size);
-	if (allocheck == NULL) execerror("memory limit exceeded", "");
-	return allocheck;
-}
-
-symbol *install(char *s, int t, double val)
-{
-	symbol *sp;
-	sp = emalloc(sizeof(symbol));
-	sp->name = emalloc(strlen(s) + 1);
-	strcpy(sp->name, s);
-	sp->type = t;
-	sp->u.val = val;
-	sp->next = root;
-	root = sp;
-	return sp;
-}
-
-symbol *lookup(char *s)
-{
-	symbol *i;
-	for(i = root; i != NULL; i = i->next)
-	{
-		if(strcmp(i->name,s) == 0) return i;
-	}
-	return NULL;
-}
-//custom functions can be added here
-#include <math.h>
-#include <stdlib.h>
-#define PI 3.14159265358979323846
-double Rand()
-{
-	return (double)rand()/(double)RAND_MAX;
-}
-
-double Atan(double p1)
-{
-	double p = atan(p1);
-	return p*(180/PI);
-}
-
-double Atan2(double p1, double p2)
-{
-	double p = atan2(p1,p2);
-	return p*(180/PI);
 }
