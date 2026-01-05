@@ -1,0 +1,10 @@
+x = 5
+
+void foo(x)
+{
+	print x,"\n"
+}
+
+foo(3)
+
+print x,"\n"
